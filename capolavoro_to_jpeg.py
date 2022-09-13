@@ -7,21 +7,19 @@ import argparse
 import time
 import subprocess
 import shlex
-# import tkinter as tk
-# from tkinter import Tk
-# from tkinter.filedialog import askopenfilename
+import multiprocessing
 
 IN_FOLDER_PATH=""
 OUT_FOLDER_PATH=""
 RAW_FILE_EXTENSION=".CR3"
-Nthread=1
+Nproc=1
 
 print("Seri, ma con brio")
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('folder', metavar='folder', type=str,
                     help='event folder to process')
-parser.add_argument('-t', '--threads', type=int, default=1, help='number of threads to use')
+parser.add_argument('-p', '--processes', type=int, default=1, help='number of processes to use')
 parser.add_argument('-a', '--append', action='store_true', help='enable append to output event folder')
 
 args = parser.parse_args()
@@ -30,12 +28,12 @@ if args.folder != None:
     IN_FOLDER_PATH = args.folder
     print(IN_FOLDER_PATH)
 
-if args.threads != None:
-    Nthread = args.threads
+if args.processes != None:
+    Nproc = args.processes
 
 OUT_FOLDER_PATH = 'output/'+os.path.basename(os.path.normpath(IN_FOLDER_PATH))+'/'
-COMMAND_TEMPLATE = 'cmd /c "C:\Program Files\ART\1.16.2\ART-cli.exe" -o "{output}" -d -c "{input}"'
-print(IN_FOLDER_PATH,OUT_FOLDER_PATH)
+COMMAND_TEMPLATE = 'ART/ART-cli -o "{output}" -d -c "{input}"'
+print(IN_FOLDER_PATH,'->',OUT_FOLDER_PATH)
 
 def find_pics(dir_path):
     res = []
@@ -48,11 +46,7 @@ def find_pics(dir_path):
             res.extend(find_pics(name))
     return res
 
-act=0
-lock = threading.Lock()
-def convert(pic_path):
-    import pdb; pdb.set_trace()
-    global act
+def convert(pic_path,queue):
     name = os.path.splitext(os.path.basename(os.path.normpath(pic_path)))[0]+'.jpg'
     name=name.replace(' ','_')
     print(pic_path,'->',OUT_FOLDER_PATH + name)
@@ -70,8 +64,7 @@ def convert(pic_path):
     if ret.returncode != 0:
         print("Error converting: " + pic_path)
         print(ret.stdout)
-    with lock:
-        act -= 1
+    queue.put(time.time())
 
 # make output directory
 os.makedirs(OUT_FOLDER_PATH, exist_ok=args.append)
@@ -79,24 +72,24 @@ found_pics = find_pics(IN_FOLDER_PATH)
 found_pics.sort()
 #print(found_pics)
 
+# pool=multiprocessing.Pool(Nproc)
+queue=multiprocessing.Queue()
 Npics=len(found_pics)
+act=0
 c = 0
 last_time=0
 avg_time = 0
-while c < Npics:
-    if act < Nthread:
-        with lock:
-            act += 1
-            delta_time = time.time() - last_time
-            print(f'P {c/Npics*100:.2f}% {c}/{Npics} ETA: {avg_time*(Npics-c):.0f}s AVG: {avg_time:.0f}s Last: {delta_time:.0f}s')
-            last_time=time.time()
-            t = threading.Thread(target=convert, args=(found_pics[c],))
-            t.start()
-            c+=1
-            avg_time = ((avg_time * (c-1)) + delta_time*(Npics-c))/c
+while c < Npics or act!=0:
+    if act < Nproc:
+        act += 1
+        t = multiprocessing.Process(target=convert, args=(found_pics[c], queue, ))
+        t.start()
+        c+=1
     else:
-        time.sleep(0.1)
+        queue.get()
+        delta_time = time.time() - last_time
+        print(f'P {c/Npics*100:.2f}% {c}/{Npics} ETA: {avg_time*(Npics-c):.0f}s AVG: {avg_time:.0f}s Last: {delta_time:.0f}s')
+        last_time=time.time()
+        avg_time = ((avg_time * (c-1)) + delta_time*(Npics-c))/c
+        act -= 1
 
-def check_out_folder(OUT_FOLDER_PATH):
-    if not os.path.exists(OUT_FOLDER_PATH):
-        os.mkdir(OUT_FOLDER_PATH)
