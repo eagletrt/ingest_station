@@ -1,7 +1,6 @@
 from audioop import avg
 from genericpath import isfile
 import pdb
-import threading
 import os
 import argparse
 import time
@@ -87,9 +86,9 @@ while c < Npics or act!=0:
         c+=1
     else:
         queue.get()
+        act -= 1
         delta_time = time.time() - last_time
         print(f'P {c/Npics*100:.2f}% {c}/{Npics} ETA: {avg_time*(Npics-c):.0f}s AVG: {avg_time:.0f}s Last: {delta_time:.0f}s')
         last_time=time.time()
         avg_time = ((avg_time * (c-1)) + delta_time*(Npics-c))/c
-        act -= 1
 
