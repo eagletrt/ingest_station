@@ -4,5 +4,5 @@ Convert propietary Capolavoro® file format and naming to human readable output 
 ## Usage
 
 ```bash
-python 3 capolavoro_to_jpeg.py <input event folder>
+python3 capolavoro_to_jpeg.py <input event folder>
 ```
